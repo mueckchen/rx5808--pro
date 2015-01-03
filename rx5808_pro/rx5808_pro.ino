@@ -654,10 +654,6 @@ void setChannelModule(uint8_t channel)
   //channelData = channelTable[channel];
   channelData = pgm_read_word_near(channelTable + channel);
 
-#ifdef DEBUG
-  Serial.print(F("TUNE: ")); Serial.print(channelData, HEX); Serial.print(F("\t"));
-#endif
-
   // bit bash out 25 bits of data
   // Order: A0-3, !R/W, D0-D19
   // A0=0, A1=0, A2=0, A3=1, RW=0, D0-19=0
