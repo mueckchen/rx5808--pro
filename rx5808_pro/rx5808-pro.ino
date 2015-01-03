@@ -37,8 +37,22 @@ SOFTWARE.
 #define slaveSelectPin 11
 #define spiClockPin 12
 #define rssiPin A6
+// this two are minimum required 
 #define buttonSeek 2
 #define buttonMode 3
+// optional comfort buttons
+#define buttonDown 4
+#define buttonSave 5
+// pins for DIP switch
+#define dip_ch0 A0
+#define dip_ch1 A1
+#define dip_ch2 A2
+#define dip_band0 A3
+#define dip_band1 A4
+#define dip_enable A5
+// Buzzer
+#define buzzer A7
+#define led 13
 
 #define RSSIMAX 75 // 75% threshold, when channel is printed in spectrum
 
@@ -89,13 +103,6 @@ const uint16_t channelFreqTable[] PROGMEM = {
   5740, 5760, 5780, 5800, 5820, 5840, 5860, 5880  // Band F / Airwave
 };
 
-//const char* channelNames[] PROGMEM = {
-//"A1", "A2", "A3", "A4", "A5", "A6", "A7", "A8",
-//"B1", "B2", "B3", "B4", "B5", "B6", "B7", "B8",
-//"E1", "E2", "E3", "E4", "E5", "E6", "E7", "E8",
-//"W1", "W2", "W3", "W4", "W5", "W6", "W7", "W8"
-//};
-
 // do coding as simple hex value to save memory.
 const uint8_t channelNames[] PROGMEM = {
   0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8,
@@ -134,14 +141,34 @@ TVout TV;
 // SETUP ----------------------------------------------------------------------------
 void setup() 
 {    
+    // IO INIT
     // initialize digital pin 13 LED as an output.
-    pinMode(13, OUTPUT); // status pin for TV mode errors
-    // control pins
+    pinMode(led, OUTPUT); // status pin for TV mode errors
+    // buzzer
+    pinMode(buzzer, OUTPUT); // Feedback buzzer (active buzzer, not passive piezo)    
+    // minimum control pins
     pinMode(buttonSeek, INPUT);
     digitalWrite(buttonSeek, INPUT_PULLUP);
     pinMode(buttonMode, INPUT);
     digitalWrite(buttonMode, INPUT_PULLUP);
-
+    // optional control
+    pinMode(buttonDown, INPUT);
+    digitalWrite(buttonDown, INPUT_PULLUP);
+    pinMode(buttonSave, INPUT);
+    digitalWrite(buttonSave, INPUT_PULLUP);    
+    // dip switches
+    pinMode(dip_ch0, INPUT);
+    digitalWrite(dip_ch0, INPUT_PULLUP);      
+    pinMode(dip_ch1, INPUT);
+    digitalWrite(dip_ch1, INPUT_PULLUP);   
+    pinMode(dip_ch2, INPUT);
+    digitalWrite(dip_ch2, INPUT_PULLUP);   
+    pinMode(dip_band0, INPUT);
+    digitalWrite(dip_band0, INPUT_PULLUP);   
+    pinMode(dip_band1, INPUT);
+    digitalWrite(dip_band1, INPUT_PULLUP);   
+    pinMode(dip_enable, INPUT);
+    digitalWrite(dip_enable, INPUT_PULLUP);   
 #ifdef DEBUG
     Serial.begin(115200);
     Serial.println(F("START:")); 
