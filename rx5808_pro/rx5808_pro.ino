@@ -66,7 +66,7 @@ SOFTWARE.
 #define START_STATE STATE_SEEK
 #define MAX_STATE STATE_MANUAL
 
-#define KEY_DEBOUNCE 10
+#define KEY_DEBOUNCE 5
 
 #define CHANNEL_BAND_SIZE 8
 #define CHANNEL_MIN_INDEX 0
@@ -316,7 +316,16 @@ void loop()
     { // reset debounce      
         switch_count = 0;    
     }
-
+    /***********************/
+    /*   Static DIP MODE   */
+    /***********************/
+    // set to DIP mode if DIP_ENABLE is low (no interactive mode)
+    if(digitalRead(dip_enable) == LOW)
+    {
+        state=STATE_DIP;
+    }
+    
+    
     /***************************************/
     /*   Draw screen if mode has changed   */
     /***************************************/
