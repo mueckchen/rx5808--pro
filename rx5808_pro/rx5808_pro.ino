@@ -60,6 +60,8 @@ SOFTWARE.
 #define STATE_SEEK 1
 #define STATE_SCAN 2
 #define STATE_MANUAL 3
+#define STATE_DIP 4
+#define STATE_SAVE 5
 
 #define START_STATE STATE_SEEK
 #define MAX_STATE STATE_MANUAL
@@ -135,6 +137,9 @@ uint8_t last_active_channel=0;
 uint8_t first_channel_marker=1;
 uint8_t update_frequency_view=0;
 uint8_t seek_found=0;
+uint8_t last_dip_channel=255;
+uint8_t last_dip_band=255;
+uint8_t scan_start=0;
 
 TVout TV;
 
@@ -211,8 +216,11 @@ void loop()
     {      
         if (switch_count > KEY_DEBOUNCE) // Button debounce
         {      
-            // Show Mode Screen
-
+            #define MAX_MENU 5
+            #define MENU_Y_SIZE 15
+            
+            uint8_t menu_id=0;
+            // Show Mode Screen            
             if(state==STATE_SEEK_FOUND)
             {
                 state=STATE_SEEK;
@@ -234,26 +242,41 @@ void loop()
                 TV.draw_rect(0,0,127,95,  WHITE);
                 TV.draw_line(0,14,127,14,WHITE);
                 TV.printPGM(10, 3,  PSTR("MODE SELECTION"));
-                TV.printPGM(10, 20, PSTR("Auto Search"));
-                TV.printPGM(10, 40, PSTR("Band Scanner"));
-                TV.printPGM(10, 60, PSTR("Manual Mode"));                                
+                TV.printPGM(10, 5+1*MENU_Y_SIZE, PSTR("Auto Search"));
+                TV.printPGM(10, 5+2*MENU_Y_SIZE, PSTR("Band Scanner"));
+                TV.printPGM(10, 5+3*MENU_Y_SIZE, PSTR("Manual Mode"));                                
+                TV.printPGM(10, 5+4*MENU_Y_SIZE, PSTR("DIP Mode"));                                
+                TV.printPGM(10, 5+5*MENU_Y_SIZE, PSTR("Save Setup"));                                
                 // selection by inverted box
-                switch (state) 
+                switch (menu_id) 
                 {    
-                    case STATE_SEEK: // auto search
-                        TV.draw_rect(8,18,100,12,  WHITE, INVERT);
+                    case 0: // auto search
+                        TV.draw_rect(8,3+1*MENU_Y_SIZE,100,12,  WHITE, INVERT);
+                        state=STATE_SEEK;
                     break;
-                    case STATE_SCAN: // Band Scanner
-                        TV.draw_rect(8,38,100,12,  WHITE, INVERT);                    
+                    case 1: // Band Scanner
+                        TV.draw_rect(8,3+2*MENU_Y_SIZE,100,12,  WHITE, INVERT);   
+                        state=STATE_SCAN;
+                        scan_start=1;
                     break;
-                    case STATE_MANUAL: // manual mode 
-                        TV.draw_rect(8,58,100,12,  WHITE, INVERT);                    
+                    case 2: // manual mode 
+                        TV.draw_rect(8,3+3*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
+                        state=STATE_MANUAL;
+                    break;
+                    case 3: // DIP mode 
+                        TV.draw_rect(8,3+4*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
+                        state=STATE_DIP;
+                        last_dip_channel=255; // force update
+                    break;
+                    case 4: // Save settings 
+                        TV.draw_rect(8,3+5*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
+                        state=STATE_SAVE;
                     break;
                 } // end switch            
                 while(digitalRead(buttonMode) == LOW)
                 {
                     // wait for MODE release
-                    in_menu_time_out=20;
+                    in_menu_time_out=10;
                 }
                 delay(100); // debounce
                 while(--in_menu_time_out && (digitalRead(buttonMode) == HIGH)) // wait for next mode or time out
@@ -267,15 +290,15 @@ void loop()
                 else // no timeout, must be keypressed
                 {
                     /*********************/
-                    /*   State handler   */
+                    /*   Menu handler   */
                     /*********************/
-                    if (state < MAX_STATE)
+                    if (menu_id < MAX_MENU)
                     {
-                        state++; // next state
+                        menu_id++; // next state
                     } 
                     else 
                     {
-                        state = START_STATE; 
+                        menu_id = 0; 
                     }                  
                 }
             } while(in_menu);
@@ -322,10 +345,12 @@ void loop()
                 // trigger new scan from begin
                 channel=CHANNEL_MIN;
                 writePos=SCANNER_LIST_X_POS; // reset channel list
-                channelIndex = pgm_read_byte_near(channelList + channel);                                
+                channelIndex = pgm_read_byte_near(channelList + channel);  
+                scan_start=1;
             break;
             case STATE_MANUAL: // manual mode 
             case STATE_SEEK: // seek mode
+            case STATE_DIP: // DIP mode            
                 TV.select_font(font8x8);
                 TV.draw_rect(0,0,TV_X_MAX,TV_Y_MAX,  WHITE); // outer frame
                 if (state == STATE_MANUAL)
@@ -336,6 +361,10 @@ void loop()
                 {
                     TV.printPGM(10, TV_Y_OFFSET,  PSTR("AUTO MODE SEEK"));                
                 }
+                else if(state == STATE_DIP)
+                {
+                    TV.printPGM(10, TV_Y_OFFSET,  PSTR("   DIP MODE"));                
+                }                
                 TV.draw_line(0,1*TV_Y_GRID,TV_X_MAX,1*TV_Y_GRID,WHITE);
                 TV.printPGM(5,TV_Y_OFFSET+1*TV_Y_GRID,  PSTR("BAND: "));                
                 TV.draw_line(0,2*TV_Y_GRID,TV_X_MAX,2*TV_Y_GRID,WHITE);    
@@ -366,7 +395,7 @@ void loop()
     /*****************************************/
     /*   Processing MANUAL MODE / SEEK MODE  */
     /*****************************************/
-    if(state == STATE_MANUAL || state == STATE_SEEK)
+    if(state == STATE_MANUAL || state == STATE_SEEK || state == STATE_DIP)
     {
         if(state == STATE_MANUAL) // MANUAL MODE
         {
@@ -374,21 +403,14 @@ void loop()
             if( digitalRead(buttonSeek) == LOW)        // channel UP
             {
                 delay(100); // debounce            
-                if(digitalRead(buttonMode) == LOW) // on both button jump band by adding 8 channels
-                {
-                    channelIndex += CHANNEL_BAND_SIZE;      
-                } 
-                else 
-                {
-                    channelIndex++;
-                }
+                channelIndex++;
                 if (channelIndex > CHANNEL_MAX_INDEX) 
                 {  
                     channelIndex = CHANNEL_MIN_INDEX;
                 }
                 update_frequency_view=1;        
             }
-            if( digitalRead(buttonMode) == LOW) // channel DOWN
+            if( digitalRead(buttonDown) == LOW) // channel DOWN
             {
                 delay(100); // debounce        
                 channelIndex--;
@@ -397,9 +419,24 @@ void loop()
                     channelIndex = CHANNEL_MAX_INDEX;
                 }    
                 update_frequency_view=1;        
-            }
+            }            
         }
-
+        if(state == STATE_DIP) // DIP MODE
+        {
+            // read band DIP switch (invert since switch pulls to gnd)
+            uint8_t dip_band= (((digitalRead(dip_band1)<<1) | digitalRead(dip_band0)) ^0x3);
+            // read channel DIP switch (invert since switch pulls to gnd)
+            uint8_t dip_channel = (((digitalRead(dip_ch2)<<2) | ((digitalRead(dip_ch1))<<1) | (digitalRead(dip_ch0))) ^0x7);
+            if((dip_band != last_dip_band) || (dip_channel != last_dip_channel)) // check for changes to avoid unrequred tuning
+            {
+                last_dip_band=dip_band;
+                last_dip_channel=dip_channel;
+                // caclulate index of channel in 4x8 array
+                channelIndex=CHANNEL_BAND_SIZE*last_dip_band + last_dip_channel;
+                update_frequency_view=1;
+            }   
+                    
+        }        
         // display refresh handler
         if(update_frequency_view) // only updated on changes
         {
@@ -465,7 +502,7 @@ void loop()
         {
           //  No action on last position to keep frame intact
         }        
-        // handling for seek mode atfter screen and RSSI has been fully processed
+        // handling for seek mode after screen and RSSI has been fully processed
         if(state == STATE_SEEK) //
         { // SEEK MODE
             if(!seek_found) // search if not found
@@ -505,6 +542,15 @@ void loop()
     /****************************/
     else if (state == STATE_SCAN) 
     {
+        // force tune on new scan start to get right RSSI value
+        if(scan_start)
+        {
+            scan_start=0;
+            setChannelModule(channelIndex);    
+            last_channel_index=channelIndex;
+            // keep time of tune to make sure that RSSI is stable when required
+            time_of_tune=millis();
+        }
         // channel marker
         if(channel < CHANNEL_MAX_INDEX)
         {
@@ -552,12 +598,10 @@ void loop()
             last_state=255; // force redraw by fake state change ;-)
             channel=CHANNEL_MIN;
             writePos=SCANNER_LIST_X_POS; // reset channel list
+            scan_start=1;
         }            
         // update index after channel change
-        channelIndex = pgm_read_byte_near(channelList + channel);    
-
-
-        
+        channelIndex = pgm_read_byte_near(channelList + channel);            
     }
 
     /*****************************/
