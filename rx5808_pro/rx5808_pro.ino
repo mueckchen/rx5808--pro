@@ -62,7 +62,7 @@ SOFTWARE.
 #define STATE_SEEK 1
 #define STATE_SCAN 2
 #define STATE_MANUAL 3
-#define STATE_DIP 4
+#define STATE_SWITCH 4
 #define STATE_SAVE 5
 
 #define START_STATE STATE_SEEK
@@ -270,7 +270,7 @@ void loop()
             TV.printPGM(10, 5+1*MENU_Y_SIZE, PSTR("Auto Search"));
             TV.printPGM(10, 5+2*MENU_Y_SIZE, PSTR("Band Scanner"));
             TV.printPGM(10, 5+3*MENU_Y_SIZE, PSTR("Manual Mode"));                                
-            TV.printPGM(10, 5+4*MENU_Y_SIZE, PSTR("DIP Mode"));                                
+            TV.printPGM(10, 5+4*MENU_Y_SIZE, PSTR("Switch Mode"));                                
             TV.printPGM(10, 5+5*MENU_Y_SIZE, PSTR("Save Setup"));                                
             // selection by inverted box
             switch (menu_id) 
@@ -292,7 +292,7 @@ void loop()
                 break;
                 case 3: // DIP mode 
                     TV.draw_rect(8,3+4*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
-                    state=STATE_DIP;
+                    state=STATE_SWITCH;
                     last_dip_channel=255; // force update
                 break;
                 case 4: // Save settings 
@@ -348,12 +348,12 @@ void loop()
         switch_count = 0;    
     }
     /***********************/
-    /*   Static DIP MODE   */
+    /*   Static SWITCH MODE   */
     /***********************/
-    // set to DIP mode if DIP_ENABLE is low (no interactive mode)
+    // set to SWITCH mode if SWITCH_ENABLE is low (no interactive mode)
     if(digitalRead(dip_enable) == LOW)
     {
-        state=STATE_DIP;
+        state=STATE_SWITCH;
     }
     /***********************/
     /*     Save buttom     */
@@ -397,7 +397,7 @@ void loop()
             break;
             case STATE_MANUAL: // manual mode 
             case STATE_SEEK: // seek mode
-            case STATE_DIP: // DIP mode            
+            case STATE_SWITCH: // SWITCH mode            
                 TV.select_font(font8x8);
                 TV.draw_rect(0,0,TV_X_MAX,TV_Y_MAX,  WHITE); // outer frame
                 if (state == STATE_MANUAL)
@@ -408,9 +408,9 @@ void loop()
                 {
                     TV.printPGM(10, TV_Y_OFFSET,  PSTR("AUTO MODE SEEK"));                
                 }
-                else if(state == STATE_DIP)
+                else if(state == STATE_SWITCH)
                 {
-                    TV.printPGM(10, TV_Y_OFFSET,  PSTR("   DIP MODE"));                
+                    TV.printPGM(10, TV_Y_OFFSET,  PSTR("  SWITCH MODE "));                
                 }                
                 TV.draw_line(0,1*TV_Y_GRID,TV_X_MAX,1*TV_Y_GRID,WHITE);
                 TV.printPGM(5,TV_Y_OFFSET+1*TV_Y_GRID,  PSTR("BAND: "));                
@@ -451,8 +451,8 @@ void loop()
                     case STATE_SEEK: // seek mode
                         TV.printPGM(50,5+1*MENU_Y_SIZE,  PSTR("Search"));                     
                     break;
-                    case STATE_DIP: // DIP mode    
-                        TV.printPGM(50,5+1*MENU_Y_SIZE,  PSTR("DIP")); 
+                    case STATE_SWITCH: // SWITCH mode    
+                        TV.printPGM(50,5+1*MENU_Y_SIZE,  PSTR("Switch")); 
                     break;                
                 }
                 TV.printPGM(10, 5+2*MENU_Y_SIZE, PSTR("Band:")); 
@@ -506,7 +506,7 @@ void loop()
     /*****************************************/
     /*   Processing MANUAL MODE / SEEK MODE  */
     /*****************************************/
-    if(state == STATE_MANUAL || state == STATE_SEEK || state == STATE_DIP)
+    if(state == STATE_MANUAL || state == STATE_SEEK || state == STATE_SWITCH)
     {
         if(state == STATE_MANUAL) // MANUAL MODE
         {
@@ -534,7 +534,7 @@ void loop()
                 update_frequency_view=1;        
             }            
         }
-        if(state == STATE_DIP) // DIP MODE
+        if(state == STATE_SWITCH) // SWITCH MODE
         {
             // read band DIP switch (invert since switch pulls to gnd)
             uint8_t dip_band= (((digitalRead(dip_band1)<<1) | digitalRead(dip_band0)) ^0x3);
