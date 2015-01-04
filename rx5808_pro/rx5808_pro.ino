@@ -526,12 +526,12 @@ void loop()
                 }                
                 delay(1000);
                 TV.select_font(font4x6);                 
-                TV.printPGM(10, 14+5*MENU_Y_SIZE,     PSTR("Holde MODE for RSSI setup"));
+                TV.printPGM(10, 14+5*MENU_Y_SIZE,     PSTR("Hold MODE to enter RSSI setup"));
                 delay(1000);
                 delay(1000);                
                 if (digitalRead(buttonMode) == LOW) // to RSSI setup
                 {
-                    TV.printPGM(10, 14+5*MENU_Y_SIZE, PSTR("ENTERING RSSI SETUP......" ));                 
+                    TV.printPGM(10, 14+5*MENU_Y_SIZE, PSTR("ENTERING RSSI SETUP ......   " ));                 
                     uint8_t loop=0;
                     for (loop=0;loop<10;loop++)
                     {
@@ -548,7 +548,7 @@ void loop()
                 } 
                 else
                 {
-                    TV.printPGM(10, 14+5*MENU_Y_SIZE, PSTR("                         "));                
+                    TV.printPGM(10, 14+5*MENU_Y_SIZE, PSTR("                             "));                
                     delay(1000);                    
                     state=state_last_used; // return to saved function
                 }
@@ -645,7 +645,7 @@ void loop()
             TV.print(50,TV_Y_OFFSET+3*TV_Y_GRID, pgm_read_word_near(channelFreqTable + channelIndex));            
         }                
         // show signal strength            
-        #define RSSI_BAR_SIZE 90
+        #define RSSI_BAR_SIZE 95
         rssi_scaled=map(rssi, 1, 100, 1, RSSI_BAR_SIZE);        
         // clear last bar
         TV.draw_rect(30, TV_Y_OFFSET+4*TV_Y_GRID, RSSI_BAR_SIZE,4 , BLACK, BLACK);
@@ -654,7 +654,7 @@ void loop()
         // print bar for spectrum
         channel=channel_from_index(channelIndex); // get 0...31 index depending of current channel            
         wait_rssi_ready();
-        #define SCANNER_BAR_MINI_SIZE 15
+        #define SCANNER_BAR_MINI_SIZE 14
         rssi = readRSSI();
         rssi_scaled=map(rssi, 1, 100, 1, SCANNER_BAR_MINI_SIZE);
         hight = (TV_ROWS - TV_SCANNER_OFFSET - rssi_scaled);
@@ -780,6 +780,8 @@ void loop()
                     // setup done
                     rssi_min=rssi_setup_min;
                     rssi_max=rssi_setup_max;
+                    EEPROM.write(EEPROM_ADR_RSSI_MIN,rssi_min);
+                    EEPROM.write(EEPROM_ADR_RSSI_MAX,rssi_max);                    
                     state=EEPROM.read(EEPROM_ADR_STATE);
                     beep(1000);
                 }
