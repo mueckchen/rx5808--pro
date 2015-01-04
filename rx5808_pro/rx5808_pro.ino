@@ -645,12 +645,12 @@ void loop()
             TV.print(50,TV_Y_OFFSET+3*TV_Y_GRID, pgm_read_word_near(channelFreqTable + channelIndex));            
         }                
         // show signal strength            
-        #define RSSI_BAR_SIZE 95
+        #define RSSI_BAR_SIZE 100
         rssi_scaled=map(rssi, 1, 100, 1, RSSI_BAR_SIZE);        
         // clear last bar
-        TV.draw_rect(30, TV_Y_OFFSET+4*TV_Y_GRID, RSSI_BAR_SIZE,4 , BLACK, BLACK);
+        TV.draw_rect(25, TV_Y_OFFSET+4*TV_Y_GRID, RSSI_BAR_SIZE,4 , BLACK, BLACK);
         //  draw new bar
-        TV.draw_rect(30, TV_Y_OFFSET+4*TV_Y_GRID, rssi_scaled, 4 , WHITE, WHITE);        
+        TV.draw_rect(25, TV_Y_OFFSET+4*TV_Y_GRID, rssi_scaled, 4 , WHITE, WHITE);        
         // print bar for spectrum
         channel=channel_from_index(channelIndex); // get 0...31 index depending of current channel            
         wait_rssi_ready();
