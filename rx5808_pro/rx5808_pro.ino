@@ -43,6 +43,8 @@ SOFTWARE.
 // optional comfort buttons
 #define buttonDown 4
 #define buttonSave 5
+// Buzzer
+#define buzzer 6
 // pins for DIP switch
 #define dip_ch0 A0
 #define dip_ch1 A1
@@ -50,8 +52,7 @@ SOFTWARE.
 #define dip_band0 A3
 #define dip_band1 A4
 #define dip_enable A5
-// Buzzer
-#define buzzer A7
+
 #define led 13
 
 #define RSSIMAX 75 // 75% threshold, when channel is printed in spectrum
@@ -125,7 +126,6 @@ uint8_t rssi_scaled = 0;
 uint8_t hight = 0;
 uint8_t state = START_STATE;
 uint8_t last_state= START_STATE+1; // force screen draw
-uint8_t bState = HIGH;
 uint8_t writePos = 0;
 uint8_t switch_count = 0;
 uint8_t man_channel = 0;
@@ -140,6 +140,7 @@ uint8_t seek_found=0;
 uint8_t last_dip_channel=255;
 uint8_t last_dip_band=255;
 uint8_t scan_start=0;
+uint8_t first_tune=1;
 
 TVout TV;
 
@@ -150,7 +151,8 @@ void setup()
     // initialize digital pin 13 LED as an output.
     pinMode(led, OUTPUT); // status pin for TV mode errors
     // buzzer
-    pinMode(buzzer, OUTPUT); // Feedback buzzer (active buzzer, not passive piezo)    
+    pinMode(buzzer, OUTPUT); // Feedback buzzer (active buzzer, not passive piezo)   
+    digitalWrite(buzzer, HIGH);
     // minimum control pins
     pinMode(buttonSeek, INPUT);
     digitalWrite(buttonSeek, INPUT_PULLUP);
@@ -184,8 +186,8 @@ void setup()
 	pinMode (spiClockPin, OUTPUT);
     // tune to first channel
     channelIndex = pgm_read_byte_near(channelList + CHANNEL_MIN);            
-    setChannelModule(channelIndex);
-    last_channel_index=channelIndex;
+    //setChannelModule(channelIndex);
+    //last_channel_index=channelIndex;
     
     // init TV system
     char retVal = TV.begin(NTSC, TV_COLS, TV_ROWS);
@@ -201,7 +203,6 @@ void setup()
         }
     }
   TV.select_font(font4x6);
-  
   // Setup Done - LED ON
   digitalWrite(13, HIGH);
 }
@@ -213,104 +214,102 @@ void loop()
     /*   Mode Select   */
     /*******************/
     if (digitalRead(buttonMode) == LOW) // key pressed ?
-    {      
-        if (switch_count > KEY_DEBOUNCE) // Button debounce
-        {      
-            #define MAX_MENU 5
-            #define MENU_Y_SIZE 15
-            
-            uint8_t menu_id=0;
-            // Show Mode Screen            
-            if(state==STATE_SEEK_FOUND)
+    {          
+        beep(50); // beep & debounce
+        delay(50);
+        #define MAX_MENU 5
+        #define MENU_Y_SIZE 15
+        
+        uint8_t menu_id=0;
+        // Show Mode Screen            
+        if(state==STATE_SEEK_FOUND)
+        {
+            state=STATE_SEEK;
+        }
+        uint8_t in_menu=1;
+        uint8_t in_menu_time_out=10; // 10x 200ms = 2 seconds
+        /*
+        Enter Mode menu
+        Show current mode
+        Change mode by MODE key
+        Any Mode will refresh screen
+        If not MODE changes in 2 seconds, it uses last selected mode
+        */
+        do
+        {
+            TV.clear_screen();
+            // simple menu
+            TV.select_font(font8x8);
+            TV.draw_rect(0,0,127,95,  WHITE);
+            TV.draw_line(0,14,127,14,WHITE);
+            TV.printPGM(10, 3,  PSTR("MODE SELECTION"));
+            TV.printPGM(10, 5+1*MENU_Y_SIZE, PSTR("Auto Search"));
+            TV.printPGM(10, 5+2*MENU_Y_SIZE, PSTR("Band Scanner"));
+            TV.printPGM(10, 5+3*MENU_Y_SIZE, PSTR("Manual Mode"));                                
+            TV.printPGM(10, 5+4*MENU_Y_SIZE, PSTR("DIP Mode"));                                
+            TV.printPGM(10, 5+5*MENU_Y_SIZE, PSTR("Save Setup"));                                
+            // selection by inverted box
+            switch (menu_id) 
+            {    
+                case 0: // auto search
+                    TV.draw_rect(8,3+1*MENU_Y_SIZE,100,12,  WHITE, INVERT);
+                    state=STATE_SEEK;
+                    force_seek=1;
+                    seek_found=0;
+                break;
+                case 1: // Band Scanner
+                    TV.draw_rect(8,3+2*MENU_Y_SIZE,100,12,  WHITE, INVERT);   
+                    state=STATE_SCAN;
+                    scan_start=1;
+                break;
+                case 2: // manual mode 
+                    TV.draw_rect(8,3+3*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
+                    state=STATE_MANUAL;
+                break;
+                case 3: // DIP mode 
+                    TV.draw_rect(8,3+4*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
+                    state=STATE_DIP;
+                    last_dip_channel=255; // force update
+                break;
+                case 4: // Save settings 
+                    TV.draw_rect(8,3+5*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
+                    state=STATE_SAVE;
+                break;
+            } // end switch            
+            while(digitalRead(buttonMode) == LOW)
             {
-                state=STATE_SEEK;
+                // wait for MODE release
+                in_menu_time_out=10;
             }
-            uint8_t in_menu=1;
-            uint8_t in_menu_time_out=10; // 10x 200ms = 2 seconds
-            /*
-            Enter Mode menu
-            Show current mode
-            Change mode by MODE key
-            Any Mode will refresh screen
-            If not MODE changes in 2 seconds, it uses last selected mode
-            */
-            do
+            beep(50); // beep & debounce
+            delay(50); // debounce                 
+            while(--in_menu_time_out && (digitalRead(buttonMode) == HIGH)) // wait for next mode or time out
             {
-                TV.clear_screen();
-                // simple menu
-                TV.select_font(font8x8);
-                TV.draw_rect(0,0,127,95,  WHITE);
-                TV.draw_line(0,14,127,14,WHITE);
-                TV.printPGM(10, 3,  PSTR("MODE SELECTION"));
-                TV.printPGM(10, 5+1*MENU_Y_SIZE, PSTR("Auto Search"));
-                TV.printPGM(10, 5+2*MENU_Y_SIZE, PSTR("Band Scanner"));
-                TV.printPGM(10, 5+3*MENU_Y_SIZE, PSTR("Manual Mode"));                                
-                TV.printPGM(10, 5+4*MENU_Y_SIZE, PSTR("DIP Mode"));                                
-                TV.printPGM(10, 5+5*MENU_Y_SIZE, PSTR("Save Setup"));                                
-                // selection by inverted box
-                switch (menu_id) 
-                {    
-                    case 0: // auto search
-                        TV.draw_rect(8,3+1*MENU_Y_SIZE,100,12,  WHITE, INVERT);
-                        state=STATE_SEEK;
-                    break;
-                    case 1: // Band Scanner
-                        TV.draw_rect(8,3+2*MENU_Y_SIZE,100,12,  WHITE, INVERT);   
-                        state=STATE_SCAN;
-                        scan_start=1;
-                    break;
-                    case 2: // manual mode 
-                        TV.draw_rect(8,3+3*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
-                        state=STATE_MANUAL;
-                    break;
-                    case 3: // DIP mode 
-                        TV.draw_rect(8,3+4*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
-                        state=STATE_DIP;
-                        last_dip_channel=255; // force update
-                    break;
-                    case 4: // Save settings 
-                        TV.draw_rect(8,3+5*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
-                        state=STATE_SAVE;
-                    break;
-                } // end switch            
-                while(digitalRead(buttonMode) == LOW)
+                delay(200); // timeout delay
+            }    
+            if(in_menu_time_out==0) 
+            {
+                in_menu=0; // EXIT
+            }
+            else // no timeout, must be keypressed
+            {
+                /*********************/
+                /*   Menu handler   */
+                /*********************/
+                if (menu_id < MAX_MENU)
                 {
-                    // wait for MODE release
-                    in_menu_time_out=10;
-                }
-                delay(100); // debounce
-                while(--in_menu_time_out && (digitalRead(buttonMode) == HIGH)) // wait for next mode or time out
+                    menu_id++; // next state
+                } 
+                else 
                 {
-                    delay(200); // timeout delay
-                }    
-                if(in_menu_time_out==0) 
-                {
-                    in_menu=0; // EXIT
-                }
-                else // no timeout, must be keypressed
-                {
-                    /*********************/
-                    /*   Menu handler   */
-                    /*********************/
-                    if (menu_id < MAX_MENU)
-                    {
-                        menu_id++; // next state
-                    } 
-                    else 
-                    {
-                        menu_id = 0; 
-                    }                  
-                }
-            } while(in_menu);
-            last_state=255; // force redraw of current screen
-            switch_count = 0;       
-            // clean line?
-            TV.print(TV_COLS/2, (TV_ROWS/2), "             ");                  
-        } 
-        else 
-        { // Button debounce
-            switch_count++;         
-        }      
+                    menu_id = 0; 
+                }                  
+            }
+        } while(in_menu);
+        last_state=255; // force redraw of current screen
+        switch_count = 0;       
+        // clean line?
+        TV.print(TV_COLS/2, (TV_ROWS/2), "             ");                        
     } 
     else // key pressed
     { // reset debounce      
@@ -411,7 +410,8 @@ void loop()
             // handling of keys
             if( digitalRead(buttonSeek) == LOW)        // channel UP
             {
-                delay(100); // debounce            
+                beep(50); // beep & debounce
+                delay(50); // debounce            
                 channelIndex++;
                 if (channelIndex > CHANNEL_MAX_INDEX) 
                 {  
@@ -421,7 +421,8 @@ void loop()
             }
             if( digitalRead(buttonDown) == LOW) // channel DOWN
             {
-                delay(100); // debounce        
+                beep(50); // beep & debounce
+                delay(50); // debounce 
                 channelIndex--;
                 if (channelIndex > CHANNEL_MAX_INDEX) // negative overflow
                 {  
@@ -518,7 +519,11 @@ void loop()
             {
                 if ((!force_seek) && (rssi > RSSIMAX)) // check for found channel
                 {
-                    seek_found=1;           
+                    seek_found=1; 
+                    // beep twice as notice of lock
+                    beep(100);
+                    delay(100);
+                    beep(100);
                 } 
                 else 
                 { // seeking itself
@@ -591,7 +596,7 @@ void loop()
             TV.print(writePos+10, SCANNER_LIST_Y_POS, pgm_read_word_near(channelFreqTable + channelIndex));
             writePos += 30;
             // mark bar
-            TV.print((channel * 4) - 3, hight - 5, pgm_read_byte_near(channelNames + channelIndex), HEX);
+            TV.print((channel * 4) - 3, hight - 5, pgm_read_byte_near(channelNames + channelIndex), HEX);            
         }
         // next channel
         if (channel < CHANNEL_MAX) 
@@ -604,6 +609,8 @@ void loop()
         // new scan possible by press scan
         if (digitalRead(buttonSeek) == LOW) // force new full new scan
         {
+            beep(50); // beep & debounce
+            delay(50); // debounce         
             last_state=255; // force redraw by fake state change ;-)
             channel=CHANNEL_MIN;
             writePos=SCANNER_LIST_X_POS; // reset channel list
@@ -622,6 +629,17 @@ void loop()
         last_channel_index=channelIndex;
         // keep time of tune to make sure that RSSI is stable when required
         time_of_tune=millis();
+        // give 3 beeps when tuned to give feedback of correct start
+        if(first_tune)
+        {
+            first_tune=0;
+            #define UP_BEEP 100
+            beep(UP_BEEP);
+            delay(UP_BEEP);
+            beep(UP_BEEP);
+            delay(UP_BEEP);
+            beep(UP_BEEP);
+        }
     }
     //rssi = readRSSI();    
 
@@ -631,6 +649,13 @@ void loop()
 /*******************/
 /*   SUB ROUTINES  */
 /*******************/    
+
+void beep(uint16_t time)
+{
+    digitalWrite(buzzer, LOW);
+    delay(time);
+    digitalWrite(buzzer, HIGH);
+}
 
 uint8_t channel_from_index(uint8_t channelIndex)
 {
