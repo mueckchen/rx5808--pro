@@ -55,8 +55,15 @@ SOFTWARE.
 #define dip_enable A5
 
 #define led 13
-
-#define RSSIMAX 75 // 75% threshold, when channel is printed in spectrum
+// RSSI default raw range
+#define RSSI_MIN_VAL 90
+#define RSSI_MAX_VAL 250
+// 75% threshold, when channel is printed in spectrum
+#define RSSI_SEEK_FOUND 75 
+// 80% under max value for RSSI 
+#define RSSI_SEEK_TRESHOLD 80
+// scan loops for setup run
+#define RSSI_SETUP_RUN 10
 
 #define STATE_SEEK_FOUND 0
 #define STATE_SEEK 1
@@ -64,6 +71,7 @@ SOFTWARE.
 #define STATE_MANUAL 3
 #define STATE_SWITCH 4
 #define STATE_SAVE 5
+#define STATE_RSSI_SETUP 6
 
 #define START_STATE STATE_SEEK
 #define MAX_STATE STATE_MANUAL
@@ -82,14 +90,15 @@ SOFTWARE.
 #define TV_Y_MAX TV_ROWS-1
 #define TV_X_MAX TV_COLS-1
 #define TV_SCANNER_OFFSET 14
-#define SCANNER_BAR_SIZE 55
+#define SCANNER_BAR_SIZE 52
 #define SCANNER_LIST_X_POS 4
 #define SCANNER_LIST_Y_POS 16
 #define SCANNER_MARKER_SIZE 2
 
 #define EEPROM_ADR_STATE 0
 #define EEPROM_ADR_TUNE 1
-
+#define EEPROM_ADR_RSSI_MIN 2
+#define EEPROM_ADR_RSSI_MAX 3
 //#define DEBUG
 
 // Channels to sent to the SPI registers
@@ -147,6 +156,12 @@ uint8_t last_dip_band=255;
 uint8_t scan_start=0;
 uint8_t first_tune=1;
 uint8_t force_menu_redraw=0;
+uint8_t rssi_min=0;
+uint8_t rssi_max=0;
+uint8_t rssi_setup_min=0;
+uint8_t rssi_setup_max=0;
+uint8_t rssi_seek_found=0;
+uint8_t rssi_setup_run=0;
 
 TVout TV;
 
@@ -212,15 +227,22 @@ void setup()
     
     // use values only of EEprom is not 255 = unsaved
     uint8_t eeprom_check = EEPROM.read(EEPROM_ADR_STATE);
-    if(eeprom_check != 255)
+    if(1 || eeprom_check == 255) // unused
     {
-        // read last setting from eeprom
-        state=EEPROM.read(EEPROM_ADR_STATE);
-        channelIndex=EEPROM.read(EEPROM_ADR_TUNE);
-        force_menu_redraw=1;
-        //setChannelModule(channelIndex);
-        //last_channel_index=channelIndex;
+        EEPROM.write(EEPROM_ADR_STATE,START_STATE);
+        EEPROM.write(EEPROM_ADR_TUNE,CHANNEL_MIN_INDEX);
+        EEPROM.write(EEPROM_ADR_RSSI_MIN,RSSI_MIN_VAL);
+        EEPROM.write(EEPROM_ADR_RSSI_MAX,RSSI_MAX_VAL);
     }
+    // debug reset EEPROM
+    //EEPROM.write(EEPROM_ADR_STATE,255);    
+        
+    // read last setting from eeprom
+    state=EEPROM.read(EEPROM_ADR_STATE);
+    channelIndex=EEPROM.read(EEPROM_ADR_TUNE);
+    rssi_min=EEPROM.read(EEPROM_ADR_RSSI_MIN);
+    rssi_max=EEPROM.read(EEPROM_ADR_RSSI_MAX);
+    force_menu_redraw=1;
 }
 
 // LOOP ----------------------------------------------------------------------------
@@ -380,9 +402,25 @@ void loop()
         switch (state) 
         {    
             case STATE_SCAN: // Band Scanner
+            case STATE_RSSI_SETUP: // RSSI setup
                 TV.select_font(font8x8);
                 TV.draw_rect(0,0,TV_X_MAX,1*TV_Y_GRID,  WHITE); // upper frame
-                TV.printPGM(10, TV_Y_OFFSET,  PSTR(" BAND SCANNER"));    
+                if(state==STATE_SCAN)
+                {
+                    TV.printPGM(10, TV_Y_OFFSET,  PSTR(" BAND SCANNER"));                 
+                }
+                else
+                {
+                    TV.printPGM(10, TV_Y_OFFSET,  PSTR("  RSSI SETUP "));
+                    TV.select_font(font4x6);                     
+                    TV.print(10, SCANNER_LIST_Y_POS, "RSSI Min:     RSSI Max:   ");                    
+                    // prepare new setup
+                    rssi_min=0;
+                    rssi_max=255;
+                    rssi_setup_min=255;
+                    rssi_setup_max=0;   
+                    rssi_setup_run=RSSI_SETUP_RUN;
+                }   
                 TV.draw_rect(0,1*TV_Y_GRID,TV_X_MAX,9,  WHITE); // list frame
                 TV.draw_rect(0,TV_ROWS - TV_SCANNER_OFFSET,TV_X_MAX,13,  WHITE); // lower frame                
                 TV.select_font(font4x6);
@@ -479,21 +517,43 @@ void loop()
                 TV.printPGM(10, 5+4*MENU_Y_SIZE, PSTR("FREQ:     GHz"));      
                 TV.print(50,5+4*MENU_Y_SIZE, pgm_read_word_near(channelFreqTable + channelIndex));                 
                 TV.printPGM(10, 5+5*MENU_Y_SIZE, PSTR("--- SAVED ---"));
-                beep(100); // beep & debounce
-                delay(100); // debounce 
-                beep(100); // beep & debounce
-                delay(100); // debounce 
-                beep(100); // beep & debounce
-                delay(100); // debounce  
-                beep(100); // beep & debounce
-                delay(100); // debounce 
-                beep(100); // beep & debounce
+                uint8_t loop=0;
+                for (loop=0;loop<5;loop++)
+                {
+                    #define RSSI_SETUP_BEEP 25
+                    beep(100); // beep 
+                    delay(100);                     
+                }                
                 delay(1000);
+                TV.select_font(font4x6);                 
+                TV.printPGM(10, 14+5*MENU_Y_SIZE,     PSTR("Holde MODE for RSSI setup"));
                 delay(1000);
-                delay(1000);
-                delay(1000);
-                state=state_last_used; // return to saved function
-                force_menu_redraw=1; // we change the state twice, must force redraw of menu
+                delay(1000);                
+                if (digitalRead(buttonMode) == LOW) // to RSSI setup
+                {
+                    TV.printPGM(10, 14+5*MENU_Y_SIZE, PSTR("ENTERING RSSI SETUP......" ));                 
+                    uint8_t loop=0;
+                    for (loop=0;loop<10;loop++)
+                    {
+                        #define RSSI_SETUP_BEEP 25
+                        beep(RSSI_SETUP_BEEP); // beep & debounce
+                        delay(RSSI_SETUP_BEEP); // debounce                      
+                    }
+                    state=STATE_RSSI_SETUP;
+                    while(digitalRead(buttonMode) == LOW)
+                    {
+                        // wait for release
+                    }
+                    delay(200);  // debounce
+                } 
+                else
+                {
+                    TV.printPGM(10, 14+5*MENU_Y_SIZE, PSTR("                         "));                
+                    delay(1000);                    
+                    state=state_last_used; // return to saved function
+                }
+                    force_menu_redraw=1; // we change the state twice, must force redraw of menu
+                   
             // selection by inverted box            
             break;
         } // end switch
@@ -620,7 +680,7 @@ void loop()
         { // SEEK MODE
             if(!seek_found) // search if not found
             {
-                if ((!force_seek) && (rssi > RSSIMAX)) // check for found channel
+                if ((!force_seek) && (rssi > RSSI_SEEK_TRESHOLD)) // check for found channel
                 {
                     seek_found=1; 
                     // beep twice as notice of lock
@@ -659,7 +719,7 @@ void loop()
     /****************************/
     /*   Processing SCAN MODE   */
     /****************************/
-    else if (state == STATE_SCAN) 
+    else if (state == STATE_SCAN || state == STATE_RSSI_SETUP) 
     {
         // force tune on new scan start to get right RSSI value
         if(scan_start)
@@ -694,15 +754,18 @@ void loop()
         //  draw new bar
         TV.draw_rect((channel * 4), hight, 3, rssi_scaled , WHITE, WHITE);
         // print channelname
-        if (rssi > RSSIMAX) 
+        if(state == STATE_SCAN)        
         {
-            TV.draw_rect(writePos, SCANNER_LIST_Y_POS, 20, 6,  BLACK, BLACK);
-            TV.print(writePos, SCANNER_LIST_Y_POS, pgm_read_byte_near(channelNames + channelIndex), HEX);
-            TV.print(writePos+10, SCANNER_LIST_Y_POS, pgm_read_word_near(channelFreqTable + channelIndex));
-            writePos += 30;
-            // mark bar
-            TV.print((channel * 4) - 3, hight - 5, pgm_read_byte_near(channelNames + channelIndex), HEX);            
-        }
+            if (rssi > RSSI_SEEK_TRESHOLD) 
+            {
+                TV.draw_rect(writePos, SCANNER_LIST_Y_POS, 20, 6,  BLACK, BLACK);
+                TV.print(writePos, SCANNER_LIST_Y_POS, pgm_read_byte_near(channelNames + channelIndex), HEX);
+                TV.print(writePos+10, SCANNER_LIST_Y_POS, pgm_read_word_near(channelFreqTable + channelIndex));
+                writePos += 30;
+                // mark bar
+                TV.print((channel * 4) - 3, hight - 5, pgm_read_byte_near(channelNames + channelIndex), HEX);            
+            }
+        }       
         // next channel
         if (channel < CHANNEL_MAX) 
         {
@@ -710,6 +773,17 @@ void loop()
         } else {
             channel=CHANNEL_MIN;
             writePos=SCANNER_LIST_X_POS; // reset channel list
+            if(state == STATE_RSSI_SETUP)        
+            {
+                if(!rssi_setup_run--)    
+                {
+                    // setup done
+                    rssi_min=rssi_setup_min;
+                    rssi_max=rssi_setup_max;
+                    state=EEPROM.read(EEPROM_ADR_STATE);
+                    beep(1000);
+                }
+            }            
         }    
         // new scan possible by press scan
         if (digitalRead(buttonSeek) == LOW) // force new full new scan
@@ -800,22 +874,38 @@ uint16_t readRSSI()
     {
         rssi += analogRead(rssiPin);
     }
-    // scale AD RSSI Valaues to 1-100%
-    #define RSSI_MIN_VAL 90
-    #define RSSI_MAX_VAL 250
-    //#define RSSI_DEBUG 
     rssi=rssi/10; // average
+    // special case for RSSI setup
+    if(state==STATE_RSSI_SETUP)
+    { // RSSI setup
+        if(rssi < rssi_setup_min)
+        {
+            rssi_setup_min=rssi;
+        }
+        if(rssi > rssi_setup_max)
+        {
+            rssi_setup_max=rssi;
+        }    
+        // dump current values
+        TV.print(50, SCANNER_LIST_Y_POS, "   ");
+        TV.print(50, SCANNER_LIST_Y_POS, rssi_setup_min , DEC);
+        TV.print(110, SCANNER_LIST_Y_POS, "   ");
+        TV.print(110, SCANNER_LIST_Y_POS, rssi_setup_max , DEC);
+    }     
+    // scale AD RSSI Valaues to 1-100%     
+    //#define RSSI_DEBUG 
+
     // Filter glitches
     #ifdef RSSI_DEBUG
         TV.print(1,20, "RAW:             ");
-        TV.print(30,25, rssi, DEC);    
+        TV.print(30,20, rssi, DEC);    
     #endif
-    rssi = constrain(rssi, RSSI_MIN_VAL, RSSI_MAX_VAL);    //original 90---250
-    rssi=rssi-RSSI_MIN_VAL; // set zero point (value 0...160)
-    rssi = map(rssi, 0, RSSI_MAX_VAL-RSSI_MIN_VAL , 1, 100);   // scale from 1..100%
+    rssi = constrain(rssi, rssi_min, rssi_max);    //original 90---250
+    rssi=rssi-rssi_min; // set zero point (value 0...160)
+    rssi = map(rssi, 0, rssi_max-rssi_min , 1, 100);   // scale from 1..100%
     #ifdef RSSI_DEBUG
         TV.print(1,40, "SCALED:           ");    
-        TV.print(50,50, rssi, DEC);    
+        TV.print(50,40, rssi, DEC);    
     #endif
     
     return (rssi);
