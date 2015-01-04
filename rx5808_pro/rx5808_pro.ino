@@ -216,8 +216,15 @@ void loop()
     if (digitalRead(buttonMode) == LOW) // key pressed ?
     {          
         beep(50); // beep & debounce
-        delay(50);
-        #define MAX_MENU 5
+        delay(50); // debounce 
+        beep(50); // beep & debounce
+        delay(50); // debounce
+        // on entry wait for release
+        while(digitalRead(buttonMode) == LOW)
+        {
+                // wait for MODE release
+        }        
+        #define MAX_MENU 4
         #define MENU_Y_SIZE 15
         
         uint8_t menu_id=0;
@@ -275,14 +282,15 @@ void loop()
                     TV.draw_rect(8,3+5*MENU_Y_SIZE,100,12,  WHITE, INVERT); 
                     state=STATE_SAVE;
                 break;
-            } // end switch            
+            } // end switch    
+            
+
+            
             while(digitalRead(buttonMode) == LOW)
             {
                 // wait for MODE release
                 in_menu_time_out=10;
-            }
-            beep(50); // beep & debounce
-            delay(50); // debounce                 
+            }                
             while(--in_menu_time_out && (digitalRead(buttonMode) == HIGH)) // wait for next mode or time out
             {
                 delay(200); // timeout delay
@@ -290,9 +298,16 @@ void loop()
             if(in_menu_time_out==0) 
             {
                 in_menu=0; // EXIT
+                beep(50); // beep & debounce
+                delay(50); // debounce 
+                beep(50); // beep & debounce
+                delay(50); // debounce 
             }
             else // no timeout, must be keypressed
             {
+                in_menu_time_out=10;
+                beep(50); // beep & debounce
+                delay(50); // debounce 
                 /*********************/
                 /*   Menu handler   */
                 /*********************/
@@ -543,6 +558,8 @@ void loop()
                 TV.printPGM(10, TV_Y_OFFSET,  PSTR("AUTO MODE LOCK"));        
                 if (digitalRead(buttonSeek) == LOW) // restart seek if key pressed
                 {
+                    beep(50); // beep & debounce
+                    delay(50); // debounce                 
                     force_seek=1;
                     seek_found=0; 
                     TV.printPGM(10, TV_Y_OFFSET,  PSTR("AUTO MODE SEEK"));        
