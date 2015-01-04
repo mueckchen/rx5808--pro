@@ -125,6 +125,7 @@ uint8_t rssi = 0;
 uint8_t rssi_scaled = 0;
 uint8_t hight = 0;
 uint8_t state = START_STATE;
+uint8_t state_last_used=START_STATE;
 uint8_t last_state= START_STATE+1; // force screen draw
 uint8_t writePos = 0;
 uint8_t switch_count = 0;
@@ -141,6 +142,7 @@ uint8_t last_dip_channel=255;
 uint8_t last_dip_band=255;
 uint8_t scan_start=0;
 uint8_t first_tune=1;
+uint8_t force_menu_redraw=0;
 
 TVout TV;
 
@@ -213,6 +215,7 @@ void loop()
     /*******************/
     /*   Mode Select   */
     /*******************/
+    state_last_used=state; // save save settings
     if (digitalRead(buttonMode) == LOW) // key pressed ?
     {          
         beep(50); // beep & debounce
@@ -343,8 +346,9 @@ void loop()
     /***************************************/
     /*   Draw screen if mode has changed   */
     /***************************************/
-    if(state != last_state)
+    if(force_menu_redraw || state != last_state)
     {
+        force_menu_redraw=0;
         /************************/
         /*   Main screen draw   */
         /************************/            
@@ -407,6 +411,68 @@ void loop()
                 first_channel_marker=1;
                 update_frequency_view=1;
                 force_seek=1;
+            break;
+            case STATE_SAVE:
+                TV.select_font(font8x8);
+                TV.draw_rect(0,0,127,95,  WHITE);
+                TV.draw_line(0,14,127,14,WHITE);
+                TV.printPGM(10, 3,  PSTR("SAVE SETTINGS"));                
+                TV.printPGM(10, 5+1*MENU_Y_SIZE, PSTR("Mode:"));
+                switch (state_last_used) 
+                {    
+                    case STATE_SCAN: // Band Scanner
+                        TV.printPGM(50,5+1*MENU_Y_SIZE,  PSTR("Scanner")); 
+                    break;
+                    case STATE_MANUAL: // manual mode 
+                        TV.printPGM(50,5+1*MENU_Y_SIZE,  PSTR("Manual"));                    
+                    break;
+                    case STATE_SEEK: // seek mode
+                        TV.printPGM(50,5+1*MENU_Y_SIZE,  PSTR("Search"));                     
+                    break;
+                    case STATE_DIP: // DIP mode    
+                        TV.printPGM(50,5+1*MENU_Y_SIZE,  PSTR("DIP")); 
+                    break;                
+                }
+                TV.printPGM(10, 5+2*MENU_Y_SIZE, PSTR("Band:")); 
+                // print band
+                if(channelIndex > 23)
+                {
+                    TV.printPGM(50,5+2*MENU_Y_SIZE,  PSTR("F/Airwave"));            
+                }
+                else if (channelIndex > 15)
+                {
+                    TV.printPGM(50,5+2*MENU_Y_SIZE,  PSTR("E        "));            
+                }
+                else if (channelIndex > 7)
+                {
+                    TV.printPGM(50,5+2*MENU_Y_SIZE,  PSTR("B        "));            
+                }
+                else
+                {
+                    TV.printPGM(50,5+2*MENU_Y_SIZE,  PSTR("A        "));            
+                }                
+                TV.printPGM(10, 5+3*MENU_Y_SIZE, PSTR("Chan:"));   
+                uint8_t active_channel = channelIndex%CHANNEL_BAND_SIZE+1; // get channel inside band
+                TV.print(50,5+3*MENU_Y_SIZE,active_channel,DEC);
+                TV.printPGM(10, 5+4*MENU_Y_SIZE, PSTR("Freq:"));                
+                TV.print(50,5+4*MENU_Y_SIZE, pgm_read_word_near(channelFreqTable + channelIndex));                 
+                TV.printPGM(10, 5+5*MENU_Y_SIZE, PSTR("--- SAVED ---"));
+                beep(100); // beep & debounce
+                delay(100); // debounce 
+                beep(100); // beep & debounce
+                delay(100); // debounce 
+                beep(100); // beep & debounce
+                delay(100); // debounce  
+                beep(100); // beep & debounce
+                delay(100); // debounce 
+                beep(100); // beep & debounce
+                delay(1000);
+                delay(1000);
+                delay(1000);
+                delay(1000);
+                state=state_last_used; // return to saved function
+                force_menu_redraw=1; // we change the state twice, must force redraw of menu
+            // selection by inverted box            
             break;
         } // end switch
         last_state=state;
