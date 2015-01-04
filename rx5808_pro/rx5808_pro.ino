@@ -32,6 +32,7 @@ SOFTWARE.
 #include <TVout.h>
 #include <fontALL.h>
 #include <avr/pgmspace.h>
+#include <EEPROM.h>
 
 #define spiDataPin 10
 #define slaveSelectPin 11
@@ -85,6 +86,9 @@ SOFTWARE.
 #define SCANNER_LIST_X_POS 4
 #define SCANNER_LIST_Y_POS 16
 #define SCANNER_MARKER_SIZE 2
+
+#define EEPROM_ADR_STATE 0
+#define EEPROM_ADR_TUNE 1
 
 //#define DEBUG
 
@@ -187,9 +191,7 @@ void setup()
     pinMode (spiDataPin, OUTPUT);
 	pinMode (spiClockPin, OUTPUT);
     // tune to first channel
-    channelIndex = pgm_read_byte_near(channelList + CHANNEL_MIN);            
-    //setChannelModule(channelIndex);
-    //last_channel_index=channelIndex;
+
     
     // init TV system
     char retVal = TV.begin(NTSC, TV_COLS, TV_ROWS);
@@ -204,9 +206,21 @@ void setup()
             delay(100);
         }
     }
-  TV.select_font(font4x6);
-  // Setup Done - LED ON
-  digitalWrite(13, HIGH);
+    TV.select_font(font4x6);
+    // Setup Done - LED ON
+    digitalWrite(13, HIGH);
+    
+    // use values only of EEprom is not 255 = unsaved
+    uint8_t eeprom_check = EEPROM.read(EEPROM_ADR_STATE);
+    if(eeprom_check != 255)
+    {
+        // read last setting from eeprom
+        state=EEPROM.read(EEPROM_ADR_STATE);
+        channelIndex=EEPROM.read(EEPROM_ADR_TUNE);
+        force_menu_redraw=1;
+        //setChannelModule(channelIndex);
+        //last_channel_index=channelIndex;
+    }
 }
 
 // LOOP ----------------------------------------------------------------------------
@@ -413,6 +427,8 @@ void loop()
                 force_seek=1;
             break;
             case STATE_SAVE:
+                EEPROM.write(EEPROM_ADR_STATE,state_last_used);
+                EEPROM.write(EEPROM_ADR_TUNE,channelIndex);             
                 TV.select_font(font8x8);
                 TV.draw_rect(0,0,127,95,  WHITE);
                 TV.draw_line(0,14,127,14,WHITE);
