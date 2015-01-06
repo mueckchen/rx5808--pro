@@ -54,10 +54,19 @@ SOFTWARE.
 #define dip_band1 A4
 #define dip_enable A5
 
+// key debounce delay in ms
+// NOTE: good values are in the range of 100-200ms
+// shorter values will make it more reactive, but may lead to double trigger
+#define KEY_DEBOUNCE 200
+
+// Set you TV format (PAL = Europe = 50Hz, NTSC = INT = 60Hz)
+//#define TV_FORMAT NTSC
+#define TV_FORMAT PAL
+
 #define led 13
 // RSSI default raw range
 #define RSSI_MIN_VAL 90
-#define RSSI_MAX_VAL 250
+#define RSSI_MAX_VAL 300
 // 75% threshold, when channel is printed in spectrum
 #define RSSI_SEEK_FOUND 75 
 // 80% under max value for RSSI 
@@ -75,8 +84,6 @@ SOFTWARE.
 
 #define START_STATE STATE_SEEK
 #define MAX_STATE STATE_MANUAL
-
-#define KEY_DEBOUNCE 5
 
 #define CHANNEL_BAND_SIZE 8
 #define CHANNEL_MIN_INDEX 0
@@ -97,8 +104,10 @@ SOFTWARE.
 
 #define EEPROM_ADR_STATE 0
 #define EEPROM_ADR_TUNE 1
-#define EEPROM_ADR_RSSI_MIN 2
-#define EEPROM_ADR_RSSI_MAX 3
+#define EEPROM_ADR_RSSI_MIN_L 2
+#define EEPROM_ADR_RSSI_MIN_H 3
+#define EEPROM_ADR_RSSI_MAX_L 4
+#define EEPROM_ADR_RSSI_MAX_H 5
 //#define DEBUG
 
 // Channels to sent to the SPI registers
@@ -156,12 +165,12 @@ uint8_t last_dip_band=255;
 uint8_t scan_start=0;
 uint8_t first_tune=1;
 uint8_t force_menu_redraw=0;
-uint8_t rssi_min=0;
-uint8_t rssi_max=0;
-uint8_t rssi_setup_min=0;
-uint8_t rssi_setup_max=0;
-uint8_t rssi_seek_found=0;
-uint8_t rssi_setup_run=0;
+uint16_t rssi_min=0;
+uint16_t rssi_max=0;
+uint16_t rssi_setup_min=0;
+uint16_t rssi_setup_max=0;
+uint16_t rssi_seek_found=0;
+uint16_t rssi_setup_run=0;
 
 TVout TV;
 
@@ -209,7 +218,7 @@ void setup()
 
     
     // init TV system
-    char retVal = TV.begin(NTSC, TV_COLS, TV_ROWS);
+    char retVal = TV.begin(TV_FORMAT, TV_COLS, TV_ROWS);
     // 0 if no error.
     // 1 if x is not divisable by 8.
     // 2 if y is to large (NTSC only cannot fill PAL vertical resolution by 8bit limit)
@@ -227,12 +236,16 @@ void setup()
     
     // use values only of EEprom is not 255 = unsaved
     uint8_t eeprom_check = EEPROM.read(EEPROM_ADR_STATE);
-    if(1 || eeprom_check == 255) // unused
+    if(eeprom_check == 255) // unused
     {
         EEPROM.write(EEPROM_ADR_STATE,START_STATE);
         EEPROM.write(EEPROM_ADR_TUNE,CHANNEL_MIN_INDEX);
-        EEPROM.write(EEPROM_ADR_RSSI_MIN,RSSI_MIN_VAL);
-        EEPROM.write(EEPROM_ADR_RSSI_MAX,RSSI_MAX_VAL);
+        // save 16 bit
+        EEPROM.write(EEPROM_ADR_RSSI_MIN_L,lowByte(RSSI_MIN_VAL));        
+        EEPROM.write(EEPROM_ADR_RSSI_MIN_H,highByte(RSSI_MIN_VAL));    
+        // save 16 bit
+        EEPROM.write(EEPROM_ADR_RSSI_MAX_L,lowByte(RSSI_MAX_VAL));
+        EEPROM.write(EEPROM_ADR_RSSI_MAX_H,highByte(RSSI_MAX_VAL));
     }
     // debug reset EEPROM
     //EEPROM.write(EEPROM_ADR_STATE,255);    
@@ -240,8 +253,8 @@ void setup()
     // read last setting from eeprom
     state=EEPROM.read(EEPROM_ADR_STATE);
     channelIndex=EEPROM.read(EEPROM_ADR_TUNE);
-    rssi_min=EEPROM.read(EEPROM_ADR_RSSI_MIN);
-    rssi_max=EEPROM.read(EEPROM_ADR_RSSI_MAX);
+    rssi_min=((EEPROM.read(EEPROM_ADR_RSSI_MIN_H)<<8) | (EEPROM.read(EEPROM_ADR_RSSI_MIN_L)));
+    rssi_max=((EEPROM.read(EEPROM_ADR_RSSI_MAX_H)<<8) | (EEPROM.read(EEPROM_ADR_RSSI_MAX_L)));
     force_menu_redraw=1;
 }
 
@@ -255,9 +268,9 @@ void loop()
     if (digitalRead(buttonMode) == LOW) // key pressed ?
     {          
         beep(50); // beep & debounce
-        delay(50); // debounce 
+        delay(KEY_DEBOUNCE/2); // debounce 
         beep(50); // beep & debounce
-        delay(50); // debounce
+        delay(KEY_DEBOUNCE/2); // debounce
         // on entry wait for release
         while(digitalRead(buttonMode) == LOW)
         {
@@ -337,16 +350,16 @@ void loop()
             if(in_menu_time_out==0) 
             {
                 in_menu=0; // EXIT
-                beep(50); // beep & debounce
+                beep(KEY_DEBOUNCE/2); // beep & debounce
                 delay(50); // debounce 
-                beep(50); // beep & debounce
+                beep(KEY_DEBOUNCE/2); // beep & debounce
                 delay(50); // debounce 
             }
             else // no timeout, must be keypressed
             {
                 in_menu_time_out=10;
                 beep(50); // beep & debounce
-                delay(50); // debounce 
+                delay(KEY_DEBOUNCE); // debounce 
                 /*********************/
                 /*   Menu handler   */
                 /*********************/
@@ -416,8 +429,8 @@ void loop()
                     TV.print(10, SCANNER_LIST_Y_POS, "RSSI Min:     RSSI Max:   ");                    
                     // prepare new setup
                     rssi_min=0;
-                    rssi_max=255;
-                    rssi_setup_min=255;
+                    rssi_max=400; // set to max range
+                    rssi_setup_min=400;
                     rssi_setup_max=0;   
                     rssi_setup_run=RSSI_SETUP_RUN;
                 }   
@@ -520,7 +533,6 @@ void loop()
                 uint8_t loop=0;
                 for (loop=0;loop<5;loop++)
                 {
-                    #define RSSI_SETUP_BEEP 25
                     beep(100); // beep 
                     delay(100);                     
                 }                
@@ -544,7 +556,7 @@ void loop()
                     {
                         // wait for release
                     }
-                    delay(200);  // debounce
+                    delay(KEY_DEBOUNCE);  // debounce
                 } 
                 else
                 {
@@ -574,7 +586,7 @@ void loop()
             if( digitalRead(buttonSeek) == LOW)        // channel UP
             {
                 beep(50); // beep & debounce
-                delay(50); // debounce            
+                delay(KEY_DEBOUNCE); // debounce            
                 channelIndex++;
                 if (channelIndex > CHANNEL_MAX_INDEX) 
                 {  
@@ -585,7 +597,7 @@ void loop()
             if( digitalRead(buttonDown) == LOW) // channel DOWN
             {
                 beep(50); // beep & debounce
-                delay(50); // debounce 
+                delay(KEY_DEBOUNCE); // debounce 
                 channelIndex--;
                 if (channelIndex > CHANNEL_MAX_INDEX) // negative overflow
                 {  
@@ -707,7 +719,7 @@ void loop()
                 if (digitalRead(buttonSeek) == LOW) // restart seek if key pressed
                 {
                     beep(50); // beep & debounce
-                    delay(50); // debounce                 
+                    delay(KEY_DEBOUNCE); // debounce                 
                     force_seek=1;
                     seek_found=0; 
                     TV.printPGM(10, TV_Y_OFFSET,  PSTR("AUTO MODE SEEK"));        
@@ -780,8 +792,12 @@ void loop()
                     // setup done
                     rssi_min=rssi_setup_min;
                     rssi_max=rssi_setup_max;
-                    EEPROM.write(EEPROM_ADR_RSSI_MIN,rssi_min);
-                    EEPROM.write(EEPROM_ADR_RSSI_MAX,rssi_max);                    
+                    // save 16 bit
+                    EEPROM.write(EEPROM_ADR_RSSI_MIN_L,(rssi_min & 0xff));        
+                    EEPROM.write(EEPROM_ADR_RSSI_MIN_H,(rssi_min >> 8));    
+                    // save 16 bit
+                    EEPROM.write(EEPROM_ADR_RSSI_MAX_L,(rssi_max & 0xff));
+                    EEPROM.write(EEPROM_ADR_RSSI_MAX_H,(rssi_max >> 8));                    
                     state=EEPROM.read(EEPROM_ADR_STATE);
                     beep(1000);
                 }
@@ -791,7 +807,7 @@ void loop()
         if (digitalRead(buttonSeek) == LOW) // force new full new scan
         {
             beep(50); // beep & debounce
-            delay(50); // debounce         
+            delay(KEY_DEBOUNCE); // debounce         
             last_state=255; // force redraw by fake state change ;-)
             channel=CHANNEL_MIN;
             writePos=SCANNER_LIST_X_POS; // reset channel list
@@ -883,17 +899,19 @@ uint16_t readRSSI()
         if(rssi < rssi_setup_min)
         {
             rssi_setup_min=rssi;
+            TV.print(50, SCANNER_LIST_Y_POS, "   ");
+            TV.print(50, SCANNER_LIST_Y_POS, rssi_setup_min , DEC);            
         }
         if(rssi > rssi_setup_max)
         {
             rssi_setup_max=rssi;
+        TV.print(110, SCANNER_LIST_Y_POS, "   ");
+        TV.print(110, SCANNER_LIST_Y_POS, rssi_setup_max , DEC);                    
         }    
         // dump current values
-        TV.print(50, SCANNER_LIST_Y_POS, "   ");
-        TV.print(50, SCANNER_LIST_Y_POS, rssi_setup_min , DEC);
-        TV.print(110, SCANNER_LIST_Y_POS, "   ");
-        TV.print(110, SCANNER_LIST_Y_POS, rssi_setup_max , DEC);
-    }     
+    }   
+    //TV.print(50, SCANNER_LIST_Y_POS-10, rssi_min , DEC);  
+    //TV.print(110, SCANNER_LIST_Y_POS-10, rssi_max , DEC); 
     // scale AD RSSI Valaues to 1-100%     
     //#define RSSI_DEBUG 
 
