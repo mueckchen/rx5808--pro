@@ -54,6 +54,7 @@ void render_setup(uint8_t mode, uint8_t x, uint8_t y, uint8_t *scrnptr) {
 	display.hres = x;
 	display.vres = y;
 	display.frames = 0;
+    display.video_mode=mode;
 	
 	if (mode)
 		display.vscale_const = _PAL_LINE_DISPLAY/display.vres - 1;
@@ -85,18 +86,31 @@ void render_setup(uint8_t mode, uint8_t x, uint8_t y, uint8_t *scrnptr) {
 				render_line = &render_line3c;
 	}
 	
-
+    // Pin setup
 	DDR_VID |= _BV(VID_PIN);
 	DDR_SYNC |= _BV(SYNC_PIN);
 	PORT_VID &= ~_BV(VID_PIN);
 	PORT_SYNC |= _BV(SYNC_PIN);
 	DDR_SND |= _BV(SND_PIN);	// for tone generation.
-	
-	// inverted fast pwm mode on timer 1
-	TCCR1A = _BV(COM1A1) | _BV(COM1A0) | _BV(WGM11);
-	TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS10);
-	
-	if (mode) {
+
+    // vertical syn is not critical from timing
+    // to have flexibilty in pin and IRQ usage, 
+    // this is passed to top application to provide
+    // a call on vsync IRQ on falling edge.
+    // simply by PCI lib
+    // example:
+    // PCintPort::attachInterrupt(vsync_in,display.vsync_handle ,FALLING);
+    
+    display.vsync_handle=&vertical_handle;   // pass to external pin ISR
+    // to full video clock setup
+    start_internal_clock();
+    display.clock_source=CLOCK_INTERN;   // current clock    
+}
+
+
+void setup_video_timing()
+{
+	if (display.video_mode) {
 		display.start_render = _PAL_LINE_MID - ((display.vres * (display.vscale_const+1))/2);
 		display.output_delay = _PAL_CYCLES_OUTPUT_START;
 		display.vsync_end = _PAL_LINE_STOP_VSYNC;
@@ -113,17 +127,84 @@ void render_setup(uint8_t mode, uint8_t x, uint8_t y, uint8_t *scrnptr) {
 		OCR1A = _CYCLES_HORZ_SYNC;
 	}
 	display.scanLine = display.lines_frame+1;
-	line_handler = &vsync_line;
+	line_handler = &vsync_line;    
+}
+
+void start_internal_clock()
+{
+	// inverted fast pwm mode on timer 1
+	TCCR1A = _BV(COM1A1) | _BV(COM1A0) | _BV(WGM11);
+	TCCR1B = _BV(WGM13) | _BV(WGM12) | _BV(CS10);
+	// all timing and video timing stuff
+    setup_video_timing();    
+    // start timer
 	TIMSK1 = _BV(TOIE1);
-	sei();
+    // set state
+    display.clock_source=CLOCK_INTERN;    
+}
+void start_external_clock()
+{
+    // disable timer1 for free running video
+    TCCR1A = 0;
+    TIMSK1 = 0;
+    // all timing and video timing stuff (Timer1 Stuff is not required)
+    setup_video_timing();
+
+     // Enable high speed edge detect on Pin D8.  
+     //ICES0 is set to 0 for falling edge detection on input capture pin.
+    TCCR1B = _BV(CS10);   
+	TIMSK1 = _BV(TOIE1);
+    // Enable input capture interrupt
+    TIMSK1 |= _BV(ICIE1);    
+    // set state
+    display.clock_source=CLOCK_EXTERN;    
+}
+// clock selector
+// MUST do full init of timing generator and video counters
+void select_clock(uint8_t mode)
+{
+    cli();
+    if(mode != display.clock_source) // action only on demand
+    {
+        if(mode) 
+        {        
+            start_external_clock();
+        }
+        else
+        {
+            start_internal_clock();        
+        }
+    }
+    sei();
 }
 
-// render a line
+// ISR function for vertical handline, only required for exernal vsync
+void vertical_handle() {
+    if(display.clock_source) // externa vsync ONLY if required
+    {
+        display.scanLine = 0; 
+    }
+}
+
+// render a line based on timer (free running)
 ISR(TIMER1_OVF_vect) {
-	hbi_hook();
-	line_handler();
+    // original TVOUT handler
+ 	hbi_hook();
+	line_handler();     
+    if(!display.clock_source)
+    {
+
+    }
 }
 
+// render a line based on external sync signal
+ISR(TIMER1_CAPT_vect) {
+    TCNT1 -= ICR1;
+ 	hbi_hook();
+	line_handler();   
+}
+
+// regular render code
 void blank_line() {
 		
 	if ( display.scanLine == display.start_render) {

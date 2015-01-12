@@ -38,12 +38,26 @@ typedef struct {
 	char vscale;			//combine me too.
 	char vsync_end;			//remove me
 	uint8_t * screen;
+    uint8_t enable_genlock;
+    uint8_t clock_source;   // 0=intenr 1=extern
+    uint8_t video_mode;     // keeps current video mode
+    void (*vsync_handle)();   // must be triggered on edge of vsync
 } TVout_vid;
 
 extern TVout_vid display;
 
 extern void (*hbi_hook)();
 extern void (*vbi_hook)();
+// genlock and video clock functions
+#define CLOCK_INTERN            0
+#define CLOCK_EXTERN            1
+void start_internal_clock();
+void start_extermal_clock();
+void select_clock(uint8_t mode);
+
+void vertical_handle();
+
+
 
 void render_setup(uint8_t mode, uint8_t x, uint8_t y, uint8_t *scrnptr);
 

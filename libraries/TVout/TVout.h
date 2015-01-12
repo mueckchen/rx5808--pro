@@ -76,7 +76,9 @@ public:
 	char begin(uint8_t mode);
 	char begin(uint8_t mode, uint8_t x, uint8_t y);
 	void end();
-	
+    void genlock();
+    void video_clock(uint8_t mode);
+    
 	//accessor functions
 	unsigned char hres();
 	unsigned char vres();

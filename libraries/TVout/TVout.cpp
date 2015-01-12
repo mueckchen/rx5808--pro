@@ -97,7 +97,19 @@ char TVout::begin(uint8_t mode, uint8_t x, uint8_t y) {
 	TIMSK1 = 0;
 	free(screen);
 }
+/* Enable genlock
+*/
+void TVout::genlock() {
+    display.enable_genlock=0;
+}
 
+/* Select video clock
+*/
+void TVout::video_clock(uint8_t mode) {
+    select_clock(mode);
+}
+
+ 
 
 /* Fill the screen with some color.
  *
